@@ -3,29 +3,124 @@ const ipAddress = "127.0.0.1";
 const port = "8765";
 let socket = null;
 
+
+
+function updateConnectionStatus(isConnected) {
+    
+
+    const statusItemCapteur = document.querySelector('.status-item.capteur');
+    const statusTextCapteur = statusItemCapteur.querySelector('span');
+    const statusDotItemCapteur = statusItemCapteur.querySelector('.status-dot')
+
+
+
+    const statusItemSynchro = document.querySelector('.status-item.synchro');
+    const statusTextSynchro = statusItemCapteur.querySelector('span');
+    const statusDotItemSynchro = statusItemSynchro.querySelector('.status-dot')
+
+    
+
+    const statusElement = document.querySelector('.connection-status');
+    const statusText = statusElement.querySelector('span');
+    const statusDot = statusElement.querySelector('.status-dot');
+
+    
+
+    if (isConnected) {
+        statusElement.style.background = 'rgba(0, 255, 100, 0.1)';
+        statusText.textContent = 'Connecté au serveur IoT';
+        if (statusDot) {
+            statusDot.style.background = 'linear-gradient(45deg, #00ff64, #00ff64)';
+        }
+        if (statusDotItem) {
+            statusDotItem.style.background = 'linear-gradient(45deg, #00ff64, #00ff64)';
+        }
+
+
+        statusItemCapteur.style.background = 'rgba(0, 255, 100, 0.1)';
+        statusTextCapteur.textContent = 'Capteurs Actifs';
+        if (statusDotItemCapteur) {
+            statusDotItemCapteur.style.background = 'linear-gradient(45deg, #00ff64, #00ff64)';
+        }
+
+        statusItemSynchro.style.background = 'rgba(0, 255, 100, 0.1)';
+        statusTextSynchro.textContent = 'Synchronisation Auto';
+        if (statusDotItemSynchro) {
+            statusDotItemSynchro.style.background = 'linear-gradient(45deg, #00ff64, #00ff64)';
+        }
+
+
+    } else {
+        statusElement.style.background = 'rgba(255, 0, 0, 0.1)';
+        statusText.textContent = 'Déconnecté - Tentative de reconnexion...';
+        if (statusDot) {
+            statusDot.style.background = 'linear-gradient(45deg, #ff0000, #ff0000)';
+        }
+
+
+        statusItemCapteur.style.background = 'rgba(255, 0, 0, 0.1)';
+        statusTextCapteur.textContent = 'Capteurs Non Connectés';
+        if (statusDotItemCapteur) {
+            statusDotItemCapteur.style.background = 'linear-gradient(45deg, #ff0000, #ff0000)';
+        }
+
+        statusItemSynchro.style.background = 'rgba(255, 0, 0, 0.1)';
+        statusTextSynchro.textContent = 'Synchronisation OFF';
+        if (statusDotItemSynchro) {
+            statusDotItemSynchro.style.background = 'linear-gradient(45deg, #ff0000, #ff0000)';
+        }
+    }
+}
+
+
+
+
 // Fonction pour établir la connexion WebSocket
 function connectWebSocket() {
     socket = new WebSocket(`ws://${ipAddress}:${port}`);
+
+    console.log("Tentative de connexion WebSocket...");
+
     
     // Gestion des événements de connexion
     socket.onopen = function() {
         console.log("Connexion WebSocket établie");
+
+        /*
         document.querySelector('.connection-status').style.background = 'rgba(0, 255, 100, 0.1)';
         document.querySelector('.connection-status span').textContent = 'Connecté au serveur IoT';
+        const dot = document.querySelector('.connection-status .status-dot');
+        if (dot) dot.style.background = 'linear-gradient(45deg, #00ff64, #00ff64)';
+        */
+        updateConnectionStatus(true)
     };
 
     socket.onclose = function() {
         console.log("Connexion WebSocket fermée");
+        
+        /*
         document.querySelector('.connection-status').style.background = 'rgba(255, 0, 0, 0.1)';
         document.querySelector('.connection-status span').textContent = 'Déconnecté - Tentative de reconnexion...';
+        const dot = document.querySelector('.connection-status .status-dot');
+        if (dot) dot.style.background = 'linear-gradient(45deg, #ff0000, #ff0000)';
+        */
+        updateConnectionStatus(false)
+
         // Tentative de reconnexion après 5 secondes
         setTimeout(connectWebSocket, 5000);
     };
 
     socket.onerror = function(error) {
         console.error("Erreur WebSocket:", error);
+        
+        /*
         document.querySelector('.connection-status').style.background = 'rgba(255, 0, 0, 0.1)';
         document.querySelector('.connection-status span').textContent = 'Erreur de connexion';
+        const dot = document.querySelector('.connection-status .status-dot');
+        if (dot) dot.style.background = 'linear-gradient(45deg, #ff0000, #ff0000)';
+        */
+        updateConnectionStatus(false)
+
     };
 
     // Gestion des messages reçus
@@ -136,6 +231,7 @@ function getMesure(type) {
 document.addEventListener('DOMContentLoaded', () => {
     // Connexion WebSocket
     connectWebSocket();
+    console.log("Connexion WebSocket initialisée");
 
     // Mise à jour automatique toutes les 5 secondes
     setInterval(getAllMesures, 2000);
