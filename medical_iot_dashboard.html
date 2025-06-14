@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediSense Pro - Monitoring Temps Réel</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --warning-gradient: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+            --dark-bg: #0a0b1e;
+            --card-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.18);
+            --text-primary: #ffffff;
+            --text-secondary: #b8c5d6;
+            --accent-glow: rgba(102, 126, 234, 0.4);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--dark-bg);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        /* Animated Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.2) 0%, transparent 50%);
+            animation: backgroundShift 20s ease-in-out infinite;
+            z-index: -1;
+        }
+
+        @keyframes backgroundShift {
+            0%, 100% { transform: scale(1) rotate(0deg); }
+            50% { transform: scale(1.1) rotate(180deg); }
+        }
+
+        /* Floating particles */
+        .particles {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); opacity: 1; }
+            50% { transform: translateY(-20px) rotate(180deg); opacity: 0.5; }
+        }
+
+        /* Header */
+        .header {
+            padding: 2rem 0;
+            text-align: center;
+            position: relative;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 1rem;
+            animation: titleGlow 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes titleGlow {
+            from { filter: drop-shadow(0 0 20px rgba(102, 126, 234, 0.5)); }
+            to { filter: drop-shadow(0 0 40px rgba(102, 126, 234, 0.8)); }
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            font-weight: 300;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 2rem;
+        }
+
+        /* Status Bar */
+        .status-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 2rem;
+            margin-bottom: 3rem;
+            flex-wrap: wrap;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem 1.5rem;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 50px;
+            animation: statusPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes statusPulse {
+            0%, 100% { transform: scale(1); box-shadow: 0 0 20px rgba(0, 255, 100, 0.3); }
+            50% { transform: scale(1.05); box-shadow: 0 0 30px rgba(0, 255, 100, 0.6); }
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #00ff64, #00ff64);
+            animation: dotBlink 1.5s ease-in-out infinite;
+        }
+
+        @keyframes dotBlink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Data Grid */
+        .data-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+
+        /* Data Cards */
+        .data-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 2rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+        }
+
+        .data-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--primary-gradient);
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+
+        .data-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .data-card:hover {
+            transform: translateY(-10px) scale(1.02);
+            box-shadow: 0 20px 60px rgba(102, 126, 234, 0.3);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-icon::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: inherit;
+            border-radius: inherit;
+            animation: iconRotate 4s linear infinite;
+        }
+
+        @keyframes iconRotate {
+            from { transform: rotate(0deg) scale(1); }
+            to { transform: rotate(360deg) scale(1.1); }
+        }
+
+        .weight-icon { background: var(--success-gradient); }
+        .temp-icon { background: var(--secondary-gradient); }
+        .height-icon { background: var(--warning-gradient); }
+        .validate-icon { background: var(--primary-gradient); }
+
+        .card-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .card-subtitle {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .card-value {
+            font-size: 3rem;
+            font-weight: 700;
+            margin: 1rem 0;
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+        }
+
+        .card-value .number {
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: numberPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes numberPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .card-value .unit {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+
+        .card-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 1rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .last-update {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .update-dot {
+            width: 8px;
+            height: 8px;
+            background: #00ff64;
+            border-radius: 50%;
+            animation: updatePulse 1s ease-in-out infinite;
+        }
+
+        @keyframes updatePulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+
+        .trend-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.85rem;
+            padding: 0.3rem 0.8rem;
+            border-radius: 20px;
+            background: rgba(0, 255, 100, 0.1);
+            color: #00ff64;
+        }
+
+        /* Loading Animation */
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top-color: #667eea;
+            animation: spin 1s ease-in-out infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Connection Status */
+        .connection-status {
+            position: fixed;
+            top: 2rem;
+            right: 2rem;
+            padding: 0.75rem 1.5rem;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            z-index: 1000;
+            animation: slideInRight 0.5s ease-out;
+        }
+
+        @keyframes slideInRight {
+            from { transform: translateX(100px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2.5rem; }
+            .data-grid { grid-template-columns: 1fr; gap: 1rem; }
+            .data-card { padding: 1.5rem; }
+            .card-value { font-size: 2.5rem; }
+            .status-bar { gap: 1rem; }
+            .connection-status { position: relative; top: auto; right: auto; margin: 1rem auto; }
+        }
+
+        /* Hover Effects */
+        .data-card:hover .card-icon {
+            animation-duration: 1s;
+        }
+
+        .data-card:hover .card-value .number {
+            animation-duration: 0.5s;
+        }
+
+        /* Glassmorphism Effect */
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(30px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Smooth transitions for all elements */
+        * {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body>
+    <!-- Floating Particles -->
+    <div class="particles" id="particles"></div>
+
+    <!-- Connection Status -->
+    <div class="connection-status">
+        <div class="status-dot"></div>
+        <span>Connecté au serveur IoT</span>
+    </div>
+
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1><i class="fas fa-heartbeat"></i> MediSense Pro</h1>
+            <p>Monitoring des paramètres vitaux en temps réel</p>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <div class="status-dot"></div>
+                <span>Capteurs Actifs</span>
+            </div>
+            <div class="status-item">
+                <div class="status-dot"></div>
+                <span>WebSocket Connecté</span>
+            </div>
+            <div class="status-item">
+                <div class="status-dot"></div>
+                <span>Synchronisation Auto</span>
+            </div>
+        </div>
+
+        <!-- Data Grid -->
+        <div class="data-grid">
+            <!-- Weight Card -->
+            <div class="data-card glass-effect">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Poids Corporel</div>
+                        <div class="card-subtitle">Balance connectée</div>
+                    </div>
+                    <div class="card-icon weight-icon">
+                        <i class="fas fa-weight"></i>
+                    </div>
+                </div>
+                <div class="card-value">
+                    <span class="number" id="data-poid">--</span>
+                    <span class="unit">kg</span>
+                </div>
+                <div class="card-footer">
+                    <div class="last-update">
+                        <div class="update-dot"></div>
+                        <span>Mis à jour maintenant</span>
+                    </div>
+                    <div class="trend-indicator">
+                        <i class="fas fa-arrow-up"></i>
+                        <span>Normal</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Temperature Card -->
+            <div class="data-card glass-effect">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Température</div>
+                        <div class="card-subtitle">Thermomètre digital</div>
+                    </div>
+                    <div class="card-icon temp-icon">
+                        <i class="fas fa-thermometer-half"></i>
+                    </div>
+                </div>
+                <div class="card-value">
+                    <span class="number" id="data-temperature">--</span>
+                    <span class="unit">°C</span>
+                </div>
+                <div class="card-footer">
+                    <div class="last-update">
+                        <div class="update-dot"></div>
+                        <span>Mis à jour maintenant</span>
+                    </div>
+                    <div class="trend-indicator">
+                        <i class="fas fa-check"></i>
+                        <span>Optimal</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Height Card -->
+            <div class="data-card glass-effect">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Taille</div>
+                        <div class="card-subtitle">Capteur ultrasonique</div>
+                    </div>
+                    <div class="card-icon height-icon">
+                        <i class="fas fa-ruler-vertical"></i>
+                    </div>
+                </div>
+                <div class="card-value">
+                    <span class="number" id="data-taille">--</span>
+                    <span class="unit">m</span>
+                </div>
+                <div class="card-footer">
+                    <div class="last-update">
+                        <div class="update-dot"></div>
+                        <span>Mis à jour maintenant</span>
+                    </div>
+                    <div class="trend-indicator">
+                        <i class="fas fa-check"></i>
+                        <span>Mesuré</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Validation Card -->
+            <div class="data-card glass-effect">
+                <div class="card-header">
+                    <div>
+                        <div class="card-title">Validation</div>
+                        <div class="card-subtitle">Statut du système</div>
+                    </div>
+                    <div class="card-icon validate-icon">
+                        <i class="fas fa-shield-check"></i>
+                    </div>
+                </div>
+                <div class="card-value">
+                    <span class="number" id="data-validation">--</span>
+                    <span class="unit"></span>
+                </div>
+                <div class="card-footer">
+                    <div class="last-update">
+                        <div class="update-dot"></div>
+                        <span>En attente</span>
+                    </div>
+                    <div class="trend-indicator">
+                        <i class="fas fa-clock"></i>
+                        <span>Standby</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Create floating particles
+        function createParticles() {
+            const particles = document.getElementById('particles');
+            for (let i = 0; i < 50; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.top = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 6 + 's';
+                particle.style.animationDuration = (Math.random() * 3 + 3) + 's';
+                particles.appendChild(particle);
+            }
+        }
+
+        // Add hover effects to cards
+        function addCardEffects() {
+            const cards = document.querySelectorAll('.data-card');
+            cards.forEach(card => {
+                card.addEventListener('mouseenter', () => {
+                    card.style.transform = 'translateY(-10px) scale(1.02)';
+                });
+                
+                card.addEventListener('mouseleave', () => {
+                    card.style.transform = 'translateY(0) scale(1)';
+                });
+            });
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            createParticles();
+            addCardEffects();
+        });
+
+        // Simulate data updates with smooth animations
+        function updateData(elementId, value) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                element.style.transform = 'scale(1.2)';
+                element.style.color = '#00ff64';
+                
+                setTimeout(() => {
+                    element.textContent = value;
+                    element.style.transform = 'scale(1)';
+                    element.style.color = '';
+                }, 200);
+            }
+        }
+
+        // mes exemple de test
+        /*
+        var ipAddress = "127.0.0.1";
+        var port = "8765";
+        var socket = new WebSocket(`ws://${ipAddress}:${port}`);
+        
+        socket.onmessage = function(event) {
+            if (event.data.startsWith("Poids :")) {
+                updateData('data-poid', event.data.split(': ')[1]);
+            } else if (event.data.startsWith("Température :")) {
+                updateData('data-temperature', event.data.split(': ')[1]);
+            } else if (event.data.startsWith("Taille :")) {
+                updateData('data-taille', event.data.split(': ')[1]);
+            } else if (event.data.startsWith("Validation :")) {
+                updateData('data-validation', event.data.split(': ')[1]);
+            }
+        };
+        */
+
+        /*
+        setTimeout(() => {
+            updateData('data-poid', "15");
+        }, 5000);
+        setTimeout(() => {
+            updateData('data-temperature', "50");
+        }, 7000);
+        setTimeout(() => {
+            updateData('data-taille', "1.25");
+        }, 10000);
+        */
+    </script>
+    
+<script src="script-param2.js" defer></script>
+</body>
+</html>
