@@ -18,75 +18,44 @@ def read_serial_data():
     
     # Connexion aux différents ports série pour chaque capteur
     try:
-        
-         # Connexion individuelle à chaque port série avec gestion d'erreur
-        try:
-            ser_poids = serial.Serial('/dev/ttyUSB0', 57600)  # Port pour le poids
-            print("Port série poids connecté avec succès")
-        except serial.SerialException as e:
-            print(f'Port série poids non trouvé: {e}')
-        
-        try:
-            ser_temperature = serial.Serial('/dev/ttyUSB1', 9600)  # Port pour la température
-            print("Port série température connecté avec succès")
-        except serial.SerialException as e:
-            print(f'Port série température non trouvé: {e}')
-        
-        try:
-            ser_taille = serial.Serial('/dev/ttyUSB2', 9600)  # Port pour la taille
-            print("Port série taille connecté avec succès")
-        except serial.SerialException as e:
-            print(f'Port série taille non trouvé: {e}')
-        
-        try:
-            ser_validation = serial.Serial('/dev/ttyACM0', 9600)  # Port pour la validation
-            print("Port série validation connecté avec succès")
-        except serial.SerialException as e:
-            print(f'Port série validation non trouvé: {e}')
-        
+        ser_poids = serial.Serial('/dev/ttyUSB0', 57600)  # Port pour le poids
+        ser_temperature = serial.Serial('/dev/ttyUSB1', 9600)  # Port pour la température
+        ser_validation = serial.Serial('/dev/ttyACM0', 9600)  # Port pour la validation
         time.sleep(2)  # Pause pour permettre aux ports de s'initialiser
-        
 
         # Boucle infinie pour lire les données en continu
         while True:
             # Vérifie si des données sont disponibles pour le poids
-            if ser_poids and ser_poids.in_waiting > 0:
-                data = ser_poids.readline().decode('utf-8').strip()
+            if ser_poids.in_waiting > 0:
+                data = ser_poids.readline().decode('utf-8').strip()  # Lit une ligne et la décode
                 try:
-                    poids = float(data)
-                    print(f'Votre poids est de {poids} Kg')
+                    poids = float(data)  # Convertit la donnée en float
+                    print(f'Votre poids est de {poids} Kg')  # Affiche le poids
                 except ValueError:
-                    print(f'Erreur de conversion des donnees pour poids : {data}')
+                    print(f'Erreur de conversion des donnees pour poids : {data}')  # Affiche une erreur si la conversion échoue
 
             # Vérifie si des données sont disponibles pour la température
-            if ser_temperature and ser_temperature.in_waiting > 0:
-                data1 = ser_temperature.readline().decode('utf-8').strip()
+            if ser_temperature.in_waiting > 0:
+                data1 = ser_temperature.readline().decode('utf-8').strip()  # Lit une ligne et la décode
                 try:
-                    temperature = float(data1)
-                    print(f'Votre température est de {temperature}')
+                    temperature = float(data1)  # Convertit la donnée en float
+                    print(f'Votre température est de {temperature}')  # Affiche la température
                 except ValueError:
-                    print(f'Erreur de conversion des donnees pour temperature : {data1}')
+                    print(f'Erreur de conversion des donnees pour temperature : {data1}')  # Affiche une erreur si la conversion échoue
 
-            # Vérifie si des données sont disponibles pour la taille
-            if ser_taille and ser_taille.in_waiting > 0:
-                data2 = ser_taille.readline().decode('utf-8').strip()
-                try:
-                    taille = float(data2)
-                    print(f'Votre taille est de {taille} m')
-                except ValueError:
-                    print(f'Erreur de conversion des donnees pour taille : {data2}')
-
+         
             # Vérifie si des données sont disponibles pour la validation
-            if ser_validation and ser_validation.in_waiting > 0:
-                data3 = ser_validation.readline().decode('utf-8').strip()
+            if ser_validation.in_waiting > 0:
+                data3 = ser_validation.readline().decode('utf-8').strip()  # Lit une ligne et la décode
                 try:
-                    validation = int(data3)
-                    if validation == 31052002:
-                        print(f'Validation reçue : {validation}')
+                    validation = int(data3)  # Convertit la donnée en int
+                    if validation == 31052002:  # Vérifie si la validation est correcte
+                        print(f'Validation reçue : {validation}')  # Affiche la validation
                     else:
                         validation = None
+               
                 except ValueError:
-                    print(f'Erreur de conversion des donnees pour validation : {data3}')
+                    print(f'Erreur de conversion des donnees pour validation : {data3}')  # Affiche une erreur si la conversion échoue
                     
     except serial.SerialException as e:
         print(f'Erreur de connexion au port serie: {e}')  # Affiche une erreur si le port série ne peut pas être ouvert
