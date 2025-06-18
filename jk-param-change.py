@@ -130,12 +130,11 @@ async def socket_server(websocket, path):
 
 # Démarrage du serveur WebSocket
 def start_socket_server():
-    # Définit un nouvel événement pour la boucle asynchrone
-    asyncio.set_event_loop(asyncio.new_event_loop())
-    # Démarre le serveur WebSocket sur localhost au port 8765
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     server = websockets.serve(socket_server, "127.0.0.1", 8765)
-    asyncio.get_event_loop().run_until_complete(server)  # Attend que le serveur soit prêt
-    asyncio.get_event_loop().run_forever()  # Démarre la boucle asynchrone pour le serveur
+    loop.run_until_complete(server)
+    loop.run_forever()
 
 # Exécution des threads pour la lecture série et le serveur WebSocket
 if __name__ == "__main__":
