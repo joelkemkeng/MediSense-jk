@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 poids: Optional[float] = None
 temperature: Optional[float] = None
 validation: Optional[int] = None
-refValidateCard : Optional[int] = 310502
+refValidateCard: int = 310502
 
 
 # Lock pour la synchronisation des threads
@@ -51,14 +51,14 @@ def read_serial_data():
         ports_connected = 0
         
         try:
-            ser_poids = serial.Serial('/dev/ttyUSB0', 57600, timeout=1)
+            ser_poids = serial.Serial('/dev/ttyUSB1', 57600, timeout=1)
             logger.info("✅ Connexion réussie au port poids (/dev/ttyUSB0)")
             ports_connected += 1
         except serial.SerialException as e:
             logger.warning(f"⚠️ Port poids non disponible (/dev/ttyUSB0): {e}")
             
         try:
-            ser_temperature = serial.Serial('/dev/ttyUSB1', 9600, timeout=1)
+            ser_temperature = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
             logger.info("✅ Connexion réussie au port température (/dev/ttyUSB1)")
             ports_connected += 1
         except serial.SerialException as e:
@@ -162,7 +162,7 @@ def read_serial_data():
                         logger.error(f"❌ Erreur lecture validation: {e}")
                 
                 # Pause adaptative
-                time.sleep(0.1 if data_received else 0.5)
+                time.sleep(0.05 if data_received else 0.2)
                         
             except Exception as e:
                 logger.error(f"❌ Erreur lors de la lecture série: {e}")
