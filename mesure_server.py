@@ -51,14 +51,14 @@ def read_serial_data():
         ports_connected = 0
         
         try:
-            ser_poids = serial.Serial('/dev/ttyUSB1', 57600, timeout=1)
+            ser_poids = serial.Serial('/dev/ttyUSB0', 57600, timeout=1)
             logger.info("✅ Connexion réussie au port poids (/dev/ttyUSB0)")
             ports_connected += 1
         except serial.SerialException as e:
             logger.warning(f"⚠️ Port poids non disponible (/dev/ttyUSB0): {e}")
             
         try:
-            ser_temperature = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
+            ser_temperature = serial.Serial('/dev/ttyUSB1', 9600, timeout=1)
             logger.info("✅ Connexion réussie au port température (/dev/ttyUSB1)")
             ports_connected += 1
         except serial.SerialException as e:
