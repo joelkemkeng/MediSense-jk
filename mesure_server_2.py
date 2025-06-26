@@ -218,7 +218,7 @@ def read_serial_data():
         if not any(detected_ports.values()):
             logger.warning("⚠️ Aucun capteur détecté automatiquement, essai configuration manuelle...")
             detected_ports = {
-                'temperature': '/dev/ttyUSB0',
+                'temperature': '/dev/ttyUSB2',
                 'poids': '/dev/ttyUSB1', 
                 'validation': '/dev/ttyACM0'
             }
