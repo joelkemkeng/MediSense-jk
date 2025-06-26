@@ -4,7 +4,26 @@
 # 🏥 Guide Complet d'Installation MediSense Pro
 
 **Version : 2.0 - Installation Automatique**  
-**Dernière mise à jour : Décembre 2024**
+**Dernière mise à jour : 26 juin 2026**
+
+
+## Auteur
+
+### Informations Personnelles
+- **Nom complet** : KEMKENG NGOUZA KEDI JOEL
+- **Nom court** : Joel Kemkeng
+- **Entreprise** : HasDigit (@HasDigit)
+
+### Contact
+- **Email personnel** : kedikemkeng@gmail.com
+- **Email professionnel** : kedikemkenh@hasdigit.com
+- **Téléphone** : +33 7 51 54 27 74
+- **Téléphone alternatif** : +237659403009
+
+### Réseaux Sociaux
+- **YouTube** : [HasDigit](https://youtube.com/@hasdigit)
+- **LinkedIn** : [Joel Kemkeng](https://linkedin.com/in/joelkemkeng)
+
 
 ---
 
