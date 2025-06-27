@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Script d'analyse complète des ports USB pour MediSense Pro
-# Compatible Raspberry Pi - Analyse des positions physiques des ports
+# Détecteur complet de ports série - Tous types
+# Compatible Raspberry Pi - Détecte TOUS les changements de ports
 # Auteur: MediSense Team
-# Usage: bash usb_analyzer.sh
+# Usage: bash comprehensive_detector.sh
 
 set -e
 
@@ -21,12 +21,12 @@ NC='\033[0m' # No Color
 # Fonction d'affichage avec style
 print_header() {
     echo -e "${BOLD}${BLUE}$1${NC}"
-    echo -e "${BLUE}$(printf '=%.0s' {1..60})${NC}"
+    echo -e "${BLUE}$(printf '=%.0s' {1..70})${NC}"
 }
 
 print_section() {
     echo -e "\n${BOLD}${CYAN}$1${NC}"
-    echo -e "${CYAN}$(printf '-%.0s' {1..40})${NC}"
+    echo -e "${CYAN}$(printf '-%.0s' {1..50})${NC}"
 }
 
 print_info() {
@@ -45,149 +45,201 @@ print_detail() {
     echo -e "${WHITE}   📋 $1${NC}"
 }
 
-# Fonction pour tester un capteur
-test_sensor() {
-    local port=$1
-    local baudrate=$2
-    local timeout=3
-    
-    timeout $timeout python3 -c "
-import serial
-import time
-import sys
-
-try:
-    ser = serial.Serial('$port', $baudrate, timeout=2)
-    time.sleep(1)
-    
-    values = []
-    codes = []
-    
-    for _ in range(5):
-        if ser.in_waiting > 0:
-            data = ser.readline().decode('utf-8', errors='ignore').strip()
-            if data:
-                # Test valeur numérique
-                try:
-                    value = float(data)
-                    values.append(value)
-                except:
-                    pass
-                
-                # Test code entier
-                try:
-                    code = int(data)
-                    if 100000 <= code <= 999999:
-                        codes.append(code)
-                except:
-                    pass
-        time.sleep(0.2)
-    
-    ser.close()
-    
-    # Analyser les résultats
-    if values:
-        avg = sum(values) / len(values)
-        if 35 <= avg <= 42:
-            print(f'TEMPERATURE:{avg:.1f}°C')
-        elif 1 <= avg <= 200:
-            print(f'POIDS:{avg:.1f}kg')
-        else:
-            print(f'UNKNOWN_NUMERIC:{avg:.1f}')
-    elif codes:
-        print(f'VALIDATION:{codes[0]}')
-    else:
-        print('NO_DATA')
-
-except Exception as e:
-    print('ERROR')
-" 2>/dev/null
+print_position() {
+    echo -e "${BOLD}${PURPLE}   🎯 $1${NC}"
 }
 
 # Début du script
 clear
-print_header "🔍 ANALYSEUR COMPLET DES PORTS USB - RASPBERRY PI"
+print_header "🔍 DÉTECTEUR COMPLET DE PORTS SÉRIE - RASPBERRY PI"
 echo -e "${BOLD}${WHITE}Date: $(date)${NC}"
 echo -e "${BOLD}${WHITE}Système: $(uname -a | cut -d' ' -f1-3)${NC}"
+echo -e "${BOLD}${WHITE}Objectif: Détecter TOUS les ports série (USB, ACM, S, AMA, etc.)${NC}"
 echo ""
 
-# Vérification des prérequis
-print_section "🔧 Vérification des prérequis"
+# Étape 1: Détection complète de TOUS les ports série
+print_section "📡 DÉTECTION COMPLÈTE DES PORTS SÉRIE"
 
-if ! command -v python3 &> /dev/null; then
-    print_error "Python3 non trouvé"
-    exit 1
-fi
+echo -e "${CYAN}🔍 Recherche de tous les types de ports série...${NC}"
 
-if ! python3 -c "import serial" 2>/dev/null; then
-    print_error "Module pyserial non installé"
-    echo "Installez avec: pip3 install pyserial"
-    exit 1
-fi
-
-print_info "Python3 et pyserial disponibles"
-
-# Étape 1: Lister tous les ports série
-print_section "📡 DÉTECTION DES PORTS SÉRIE"
-
+# Rechercher tous les types de ports série possibles
 USB_PORTS=($(ls /dev/ttyUSB* 2>/dev/null | sort))
 ACM_PORTS=($(ls /dev/ttyACM* 2>/dev/null | sort))
+S_PORTS=($(ls /dev/ttyS* 2>/dev/null | sort))
+AMA_PORTS=($(ls /dev/ttyAMA* 2>/dev/null | sort))
+
+echo -e "${WHITE}🔌 Ports USB série (ttyUSB*):${NC}"
+if [ ${#USB_PORTS[@]} -gt 0 ]; then
+    for port in "${USB_PORTS[@]}"; do
+        print_info "$(basename $port) → $port"
+    done
+else
+    print_warning "Aucun port ttyUSB* détecté"
+fi
+
+echo -e "${WHITE}🔌 Ports ACM (ttyACM*):${NC}"
+if [ ${#ACM_PORTS[@]} -gt 0 ]; then
+    for port in "${ACM_PORTS[@]}"; do
+        print_info "$(basename $port) → $port"
+    done
+else
+    print_warning "Aucun port ttyACM* détecté"
+fi
+
+echo -e "${WHITE}🔌 Ports série natifs (ttyS*):${NC}"
+if [ ${#S_PORTS[@]} -gt 0 ]; then
+    for port in "${S_PORTS[@]}"; do
+        print_detail "$(basename $port) → $port (Port série natif)"
+    done
+else
+    print_detail "Aucun port ttyS* utilisable détecté"
+fi
+
+echo -e "${WHITE}🔌 Ports UART Raspberry Pi (ttyAMA*):${NC}"
+if [ ${#AMA_PORTS[@]} -gt 0 ]; then
+    for port in "${AMA_PORTS[@]}"; do
+        print_detail "$(basename $port) → $port (UART Raspberry Pi)"
+    done
+else
+    print_detail "Aucun port ttyAMA* détecté"
+fi
+
+# Combiner tous les ports détectés (sauf les ports système)
 ALL_PORTS=("${USB_PORTS[@]}" "${ACM_PORTS[@]}")
 
+# Ajouter les ports UART seulement s'ils sont configurés pour les capteurs
+for port in "${AMA_PORTS[@]}"; do
+    if [[ "$port" != "/dev/ttyAMA0" ]] || [ -w "$port" ] 2>/dev/null; then
+        ALL_PORTS+=("$port")
+    fi
+done
+
+echo ""
+print_info "Total des ports série utilisables: ${#ALL_PORTS[@]}"
+
 if [ ${#ALL_PORTS[@]} -eq 0 ]; then
-    print_error "Aucun port série détecté!"
-    print_warning "Vérifiez que vos périphériques USB sont connectés"
+    print_error "Aucun port série utilisable détecté!"
+    print_warning "Vérifications à faire:"
+    echo -e "${WHITE}   1. Vos capteurs sont-ils bien connectés ?${NC}"
+    echo -e "${WHITE}   2. Les câbles USB fonctionnent-ils ?${NC}"
+    echo -e "${WHITE}   3. Les drivers sont-ils installés ?${NC}"
+    echo -e "${WHITE}   4. Permissions sur les ports ? (sudo usermod -a -G dialout \$USER)${NC}"
     exit 1
 fi
 
-print_info "Ports série détectés: ${#ALL_PORTS[@]}"
-for port in "${ALL_PORTS[@]}"; do
-    print_detail "$(basename $port) → $port"
-done
+# Étape 2: Comparaison avec l'état précédent
+print_section "📊 COMPARAISON AVEC L'ÉTAT PRÉCÉDENT"
 
-# Étape 2: Analyse détaillée de chaque port
-print_section "🔍 ANALYSE DÉTAILLÉE DES PORTS USB"
+PREVIOUS_STATE="/tmp/medisense_previous_ports.txt"
 
-declare -A PORT_INFO
-declare -A SENSOR_MAPPING
+if [ -f "$PREVIOUS_STATE" ]; then
+    echo -e "${CYAN}📄 État précédent trouvé, comparaison...${NC}"
+    
+    # Lire l'état précédent
+    declare -A PREVIOUS_PORTS
+    while IFS= read -r line; do
+        if [[ "$line" =~ ^([^:]+):(.+)$ ]]; then
+            port="${BASH_REMATCH[1]}"
+            kernels="${BASH_REMATCH[2]}"
+            PREVIOUS_PORTS["$kernels"]="$port"
+        fi
+    done < "$PREVIOUS_STATE"
+    
+    echo -e "${WHITE}🔄 Changements détectés:${NC}"
+    
+    # Vérifier les changements
+    changes_detected=false
+    for port in "${ALL_PORTS[@]}"; do
+        port_name=$(basename "$port")
+        current_kernels=$(sudo udevadm info -a -n "$port" | grep 'KERNELS==' | head -1 | cut -d'"' -f2 2>/dev/null || echo "N/A")
+        
+        if [ "$current_kernels" != "N/A" ]; then
+            if [[ -n "${PREVIOUS_PORTS[$current_kernels]}" ]]; then
+                prev_port="${PREVIOUS_PORTS[$current_kernels]}"
+                if [ "$prev_port" != "$port_name" ]; then
+                    print_warning "Position $current_kernels: $prev_port → $port_name (CHANGEMENT!)"
+                    changes_detected=true
+                else
+                    print_detail "Position $current_kernels: $port_name (Inchangé)"
+                fi
+            else
+                print_info "Position $current_kernels: $port_name (NOUVEAU)"
+                changes_detected=true
+            fi
+        fi
+    done
+    
+    if [ "$changes_detected" = false ]; then
+        print_info "Aucun changement détecté depuis la dernière analyse"
+    fi
+else
+    print_warning "Aucun état précédent trouvé - première analyse"
+fi
 
-for port in "${ALL_PORTS[@]}"; do
+# Étape 3: Analyse détaillée de chaque port
+print_section "🔍 ANALYSE DÉTAILLÉE DES PORTS"
+
+declare -A POSITION_MAP
+declare -A PORT_DETAILS
+
+for i in "${!ALL_PORTS[@]}"; do
+    port="${ALL_PORTS[$i]}"
+    port_name=$(basename "$port")
+    port_num=$((i+1))
+    
+    echo ""
+    echo -e "${BOLD}${PURPLE}📱 PORT #$port_num: $port_name${NC}"
+    echo -e "${PURPLE}$(printf '▔%.0s' {1..40})${NC}"
+    
+    # Vérifier que le port existe et est accessible
     if [ ! -e "$port" ]; then
+        print_error "Port $port non accessible"
         continue
     fi
     
-    port_name=$(basename "$port")
-    echo ""
-    echo -e "${BOLD}${PURPLE}📱 ANALYSE DE $port_name${NC}"
-    echo -e "${PURPLE}$(printf '▔%.0s' {1..30})${NC}"
+    # Récupérer toutes les informations du port
+    echo -e "${CYAN}🏷️  Informations complètes du périphérique:${NC}"
     
-    # Informations udev complètes
-    echo -e "${CYAN}🏷️  Informations du périphérique:${NC}"
-    
-    # Vendor et Product ID
+    # Informations de base
     VENDOR_ID=$(sudo udevadm info -a -n "$port" | grep 'ATTRS{idVendor}' | head -1 | cut -d'"' -f2 2>/dev/null || echo "N/A")
     PRODUCT_ID=$(sudo udevadm info -a -n "$port" | grep 'ATTRS{idProduct}' | head -1 | cut -d'"' -f2 2>/dev/null || echo "N/A")
-    
-    print_detail "Vendor ID: $VENDOR_ID"
-    print_detail "Product ID: $PRODUCT_ID"
-    
-    # Serial Number
     SERIAL=$(sudo udevadm info -a -n "$port" | grep 'ATTRS{serial}' | head -1 | cut -d'"' -f2 2>/dev/null || echo "N/A")
-    print_detail "Numéro de série: $SERIAL"
     
-    # KERNELS (position physique)
+    print_detail "Vendor ID: ${YELLOW}$VENDOR_ID${NC}"
+    print_detail "Product ID: ${YELLOW}$PRODUCT_ID${NC}"
+    print_detail "Numéro de série: ${YELLOW}$SERIAL${NC}"
+    
+    # Position physique (KERNELS) - Information principale
     KERNELS=$(sudo udevadm info -a -n "$port" | grep 'KERNELS==' | head -1 | cut -d'"' -f2 2>/dev/null || echo "N/A")
-    print_detail "Position physique (KERNELS): $KERNELS"
+    print_position "Position physique unique: ${BOLD}${GREEN}$KERNELS${NC}"
     
-    # Device Path
+    # Type de port
+    if [[ "$port_name" == ttyUSB* ]]; then
+        PORT_TYPE="USB Série (Convertisseur USB-Série)"
+    elif [[ "$port_name" == ttyACM* ]]; then
+        PORT_TYPE="USB ACM (Arduino, Modem, etc.)"
+    elif [[ "$port_name" == ttyS* ]]; then
+        PORT_TYPE="Port série natif"
+    elif [[ "$port_name" == ttyAMA* ]]; then
+        PORT_TYPE="UART Raspberry Pi"
+    else
+        PORT_TYPE="Autre type de port série"
+    fi
+    
+    print_detail "Type de port: $PORT_TYPE"
+    
+    # Informations du système
     DEVPATH=$(sudo udevadm info -a -n "$port" | grep 'looking at device' | head -1 | cut -d"'" -f2 2>/dev/null || echo "N/A")
-    print_detail "Chemin périphérique: $DEVPATH"
-    
-    # Informations du driver
+    SUBSYSTEM=$(sudo udevadm info -a -n "$port" | grep 'SUBSYSTEM==' | head -1 | cut -d'"' -f2 2>/dev/null || echo "N/A")
     DRIVER=$(sudo udevadm info -a -n "$port" | grep 'DRIVERS==' | head -1 | cut -d'"' -f2 2>/dev/null || echo "N/A")
-    print_detail "Driver utilisé: $DRIVER"
     
-    # Manufacturer et Product name
+    print_detail "Sous-système: $SUBSYSTEM"
+    print_detail "Driver: $DRIVER"
+    if [ "$DEVPATH" != "N/A" ]; then
+        print_detail "Chemin périphérique: $DEVPATH"
+    fi
+    
+    # Informations du fabricant si disponibles
     MANUFACTURER=$(sudo udevadm info -a -n "$port" | grep 'ATTRS{manufacturer}' | head -1 | cut -d'"' -f2 2>/dev/null || echo "N/A")
     PRODUCT_NAME=$(sudo udevadm info -a -n "$port" | grep 'ATTRS{product}' | head -1 | cut -d'"' -f2 2>/dev/null || echo "N/A")
     
@@ -198,172 +250,97 @@ for port in "${ALL_PORTS[@]}"; do
         print_detail "Nom du produit: $PRODUCT_NAME"
     fi
     
-    # Test du type de capteur
-    echo -e "${CYAN}🧪 Test d'identification du capteur:${NC}"
+    # Permissions et propriétés du fichier
+    PORT_PERMS=$(ls -la "$port" 2>/dev/null | awk '{print $1" "$3" "$4}' || echo "N/A")
+    print_detail "Permissions: $PORT_PERMS"
     
-    # Test à 9600 baud
-    result_9600=$(test_sensor "$port" 9600)
-    if [ "$result_9600" != "ERROR" ] && [ "$result_9600" != "NO_DATA" ]; then
-        print_info "9600 baud: $result_9600"
+    # Vérifier l'accessibilité
+    if [ -r "$port" ] && [ -w "$port" ]; then
+        print_detail "Accessibilité: ${GREEN}Lecture/Écriture OK${NC}"
+    elif [ -r "$port" ]; then
+        print_detail "Accessibilité: ${YELLOW}Lecture seule${NC}"
     else
-        print_detail "9600 baud: Aucune donnée valide"
+        print_detail "Accessibilité: ${RED}Accès refusé${NC}"
+        print_warning "Ajoutez-vous au groupe dialout: sudo usermod -a -G dialout \$USER"
     fi
     
-    # Test à 57600 baud pour les capteurs de poids
-    result_57600=$(test_sensor "$port" 57600)
-    if [ "$result_57600" != "ERROR" ] && [ "$result_57600" != "NO_DATA" ]; then
-        print_info "57600 baud: $result_57600"
-    else
-        print_detail "57600 baud: Aucune donnée valide"
+    # Stocker les informations pour le résumé
+    if [ "$KERNELS" != "N/A" ]; then
+        POSITION_MAP["$KERNELS"]="$port_name"
+        PORT_DETAILS["$port_name"]="$KERNELS:$VENDOR_ID:$PRODUCT_ID:$SERIAL:$PORT_TYPE"
     fi
-    
-    # Déterminer le type de capteur
-    SENSOR_TYPE="INCONNU"
-    if [[ "$result_9600" == TEMPERATURE* ]]; then
-        SENSOR_TYPE="CAPTEUR_TEMPERATURE"
-        SENSOR_MAPPING["TEMPERATURE"]="$port:$KERNELS"
-    elif [[ "$result_57600" == POIDS* ]]; then
-        SENSOR_TYPE="CAPTEUR_POIDS" 
-        SENSOR_MAPPING["POIDS"]="$port:$KERNELS"
-    elif [[ "$result_9600" == VALIDATION* ]] || [[ "$port" == *"ACM"* ]]; then
-        SENSOR_TYPE="CAPTEUR_VALIDATION"
-        SENSOR_MAPPING["VALIDATION"]="$port:$KERNELS"
-    fi
-    
-    echo -e "${GREEN}🎯 Type identifié: ${BOLD}$SENSOR_TYPE${NC}"
-    
-    # Stocker les informations
-    PORT_INFO["$port"]="$VENDOR_ID:$PRODUCT_ID:$KERNELS:$SENSOR_TYPE:$SERIAL"
 done
 
-# Étape 3: Résumé des positions physiques
-print_section "📍 RÉSUMÉ DES POSITIONS PHYSIQUES"
+# Étape 4: Résumé des positions physiques uniques
+print_section "📋 RÉSUMÉ DES POSITIONS PHYSIQUES UNIQUES"
 
-echo -e "${BOLD}${WHITE}Position physique des capteurs détectés:${NC}"
+echo -e "${BOLD}${WHITE}Tableau des correspondances Position ↔ Port:${NC}"
 echo ""
+echo -e "${CYAN}┌─────────────────────────────┬─────────────────┬─────────────────────┐${NC}"
+echo -e "${CYAN}│${NC} ${BOLD}Position Physique Unique${NC}   ${CYAN}│${NC} ${BOLD}Port Assigné${NC}       ${CYAN}│${NC} ${BOLD}Type${NC}                ${CYAN}│${NC}"
+echo -e "${CYAN}├─────────────────────────────┼─────────────────┼─────────────────────┤${NC}"
 
-if [ ${#SENSOR_MAPPING[@]} -eq 0 ]; then
-    print_warning "Aucun capteur MediSense détecté"
-else
-    for sensor in "TEMPERATURE" "POIDS" "VALIDATION"; do
-        if [[ -n "${SENSOR_MAPPING[$sensor]}" ]]; then
-            port_info="${SENSOR_MAPPING[$sensor]}"
-            port_name=$(echo "$port_info" | cut -d':' -f1)
-            kernels=$(echo "$port_info" | cut -d':' -f2)
-            
-            case $sensor in
-                "TEMPERATURE")
-                    icon="🌡️"
-                    desc="Capteur de Température"
-                    ;;
-                "POIDS")
-                    icon="⚖️"
-                    desc="Capteur de Poids"
-                    ;;
-                "VALIDATION")
-                    icon="🔐"
-                    desc="Capteur de Validation"
-                    ;;
-            esac
-            
-            echo -e "${BOLD}${GREEN}$icon $desc${NC}"
-            echo -e "   📱 Port: ${YELLOW}$port_name${NC}"
-            echo -e "   📍 Position physique: ${CYAN}$kernels${NC}"
-            echo ""
-        else
-            case $sensor in
-                "TEMPERATURE") icon="🌡️"; desc="Capteur de Température" ;;
-                "POIDS") icon="⚖️"; desc="Capteur de Poids" ;;
-                "VALIDATION") icon="🔐"; desc="Capteur de Validation" ;;
-            esac
-            echo -e "${RED}$icon $desc: Non détecté${NC}"
-        fi
-    done
-fi
-
-# Étape 4: Génération des règles udev
-print_section "📝 GÉNÉRATION DES RÈGLES UDEV"
-
-if [ ${#SENSOR_MAPPING[@]} -gt 0 ]; then
-    echo -e "${CYAN}Règles udev suggérées pour fixer les ports:${NC}"
-    echo ""
+# Trier les positions par ordre alphabétique
+for kernels in $(printf '%s\n' "${!POSITION_MAP[@]}" | sort); do
+    port_name="${POSITION_MAP[$kernels]}"
+    port_info="${PORT_DETAILS[$port_name]}"
+    port_type=$(echo "$port_info" | cut -d':' -f5)
     
-    for sensor in "TEMPERATURE" "POIDS" "VALIDATION"; do
-        if [[ -n "${SENSOR_MAPPING[$sensor]}" ]]; then
-            port_info="${SENSOR_MAPPING[$sensor]}"
-            port_name=$(echo "$port_info" | cut -d':' -f1)
-            kernels=$(echo "$port_info" | cut -d':' -f2)
-            
-            # Récupérer les IDs pour ce port
-            port_data="${PORT_INFO[$port_name]}"
-            vendor_id=$(echo "$port_data" | cut -d':' -f1)
-            product_id=$(echo "$port_data" | cut -d':' -f2)
-            
-            sensor_lower=$(echo "$sensor" | tr '[:upper:]' '[:lower:]')
-            
-            echo -e "${WHITE}# $sensor (Position: $kernels)${NC}"
-            if [ "$kernels" != "N/A" ]; then
-                echo -e "${GREEN}SUBSYSTEM==\"tty\", ATTRS{idVendor}==\"$vendor_id\", ATTRS{idProduct}==\"$product_id\", KERNELS==\"$kernels\", SYMLINK+=\"medisense_$sensor_lower\"${NC}"
-            else
-                echo -e "${YELLOW}SUBSYSTEM==\"tty\", ATTRS{idVendor}==\"$vendor_id\", ATTRS{idProduct}==\"$product_id\", SYMLINK+=\"medisense_$sensor_lower\"${NC}"
-            fi
-            echo ""
-        fi
-    done
+    # Raccourcir le type pour l'affichage
+    case "$port_type" in
+        "USB Série"*) short_type="USB Série" ;;
+        "USB ACM"*) short_type="USB ACM" ;;
+        "Port série natif") short_type="Série natif" ;;
+        "UART Raspberry Pi") short_type="UART RPi" ;;
+        *) short_type="Autre" ;;
+    esac
     
-    echo -e "${CYAN}💡 Pour appliquer ces règles:${NC}"
-    echo -e "${WHITE}   1. sudo nano /etc/udev/rules.d/99-medisense.rules${NC}"
-    echo -e "${WHITE}   2. Copier les règles ci-dessus${NC}"
-    echo -e "${WHITE}   3. sudo udevadm control --reload-rules${NC}"
-    echo -e "${WHITE}   4. sudo udevadm trigger${NC}"
-    echo -e "${WHITE}   5. sudo reboot${NC}"
-else
-    print_warning "Aucune règle udev générée - capteurs non détectés"
-fi
+    printf "${CYAN}│${NC} %-27s ${CYAN}│${NC} %-15s ${CYAN}│${NC} %-19s ${CYAN}│${NC}\n" "$kernels" "$port_name" "$short_type"
+done
 
-# Étape 5: Guide de branchement
-print_section "🔌 GUIDE DE BRANCHEMENT POUR L'UTILISATEUR"
+echo -e "${CYAN}└─────────────────────────────┴─────────────────┴─────────────────────┘${NC}"
 
-echo -e "${BOLD}${WHITE}Instructions de branchement des capteurs:${NC}"
+# Étape 5: Sauvegarde de l'état actuel
+print_section "💾 SAUVEGARDE DE L'ÉTAT ACTUEL"
+
+echo "# État des ports série - $(date)" > "$PREVIOUS_STATE"
+for kernels in $(printf '%s\n' "${!POSITION_MAP[@]}" | sort); do
+    port_name="${POSITION_MAP[$kernels]}"
+    echo "$port_name:$kernels" >> "$PREVIOUS_STATE"
+done
+
+print_info "État actuel sauvegardé dans: $PREVIOUS_STATE"
+print_detail "Utilisé pour détecter les changements lors de la prochaine exécution"
+
+# Étape 6: Recommandations
+print_section "💡 RECOMMANDATIONS"
+
+echo -e "${CYAN}📋 Conseils pour stabiliser vos ports:${NC}"
 echo ""
+echo -e "${WHITE}1. ${BOLD}Positions physiques stables détectées:${NC}"
+for kernels in $(printf '%s\n' "${!POSITION_MAP[@]}" | sort); do
+    port_name="${POSITION_MAP[$kernels]}"
+    echo -e "${WHITE}   • Position $kernels → Utilisez toujours ce port pour le même capteur${NC}"
+done
 
-if [[ -n "${SENSOR_MAPPING[TEMPERATURE]}" ]]; then
-    kernels=$(echo "${SENSOR_MAPPING[TEMPERATURE]}" | cut -d':' -f2)
-    echo -e "${GREEN}🌡️  CAPTEUR DE TEMPÉRATURE:${NC}"
-    echo -e "   📍 Brancher sur la position physique: ${CYAN}$kernels${NC}"
-    echo -e "   💡 Cette position correspond actuellement à: ${YELLOW}$(echo "${SENSOR_MAPPING[TEMPERATURE]}" | cut -d':' -f1)${NC}"
-    echo ""
-fi
+echo ""
+echo -e "${WHITE}2. ${BOLD}Pour créer des liens fixes:${NC}"
+echo -e "${WHITE}   • Créez des règles udev basées sur les positions KERNELS${NC}"
+echo -e "${WHITE}   • Exemple: KERNELS==\"1-1.4.2\" → /dev/medisense_temperature${NC}"
 
-if [[ -n "${SENSOR_MAPPING[POIDS]}" ]]; then
-    kernels=$(echo "${SENSOR_MAPPING[POIDS]}" | cut -d':' -f2)
-    echo -e "${GREEN}⚖️  CAPTEUR DE POIDS (BALANCE):${NC}"
-    echo -e "   📍 Brancher sur la position physique: ${CYAN}$kernels${NC}"
-    echo -e "   💡 Cette position correspond actuellement à: ${YELLOW}$(echo "${SENSOR_MAPPING[POIDS]}" | cut -d':' -f1)${NC}"
-    echo ""
-fi
-
-if [[ -n "${SENSOR_MAPPING[VALIDATION]}" ]]; then
-    kernels=$(echo "${SENSOR_MAPPING[VALIDATION]}" | cut -d':' -f2)
-    echo -e "${GREEN}🔐 CAPTEUR DE VALIDATION:${NC}"
-    echo -e "   📍 Brancher sur la position physique: ${CYAN}$kernels${NC}"
-    echo -e "   💡 Cette position correspond actuellement à: ${YELLOW}$(echo "${SENSOR_MAPPING[VALIDATION]}" | cut -d':' -f1)${NC}"
-    echo ""
-fi
-
-# Informations supplémentaires
-echo -e "${CYAN}📋 Informations importantes:${NC}"
-echo -e "${WHITE}   • Les positions physiques (KERNELS) ne changent pas tant que vous${NC}"
-echo -e "${WHITE}     ne déplacez pas physiquement les câbles USB${NC}"
-echo -e "${WHITE}   • Une fois les règles udev appliquées, les capteurs auront${NC}"
-echo -e "${WHITE}     des liens fixes: /dev/medisense_temperature, etc.${NC}"
-echo -e "${WHITE}   • Redémarrez après avoir appliqué les règles udev${NC}"
+echo ""
+echo -e "${WHITE}3. ${BOLD}Si un port disparaît:${NC}"
+echo -e "${WHITE}   • Vérifiez les connexions physiques${NC}"
+echo -e "${WHITE}   • Redémarrez le Raspberry Pi${NC}"
+echo -e "${WHITE}   • Vérifiez les permissions (dialout group)${NC}"
 
 # Fin du script
 print_section "✅ ANALYSE TERMINÉE"
 
-echo -e "${BOLD}${GREEN}🎯 Résumé: ${#SENSOR_MAPPING[@]} capteur(s) MediSense détecté(s)${NC}"
-echo -e "${WHITE}📄 Log sauvegardé automatiquement dans les journaux système${NC}"
-echo -e "${WHITE}🔄 Relancez ce script après avoir déplacé des capteurs${NC}"
+echo -e "${BOLD}${GREEN}🎯 Résumé: ${#ALL_PORTS[@]} port(s) série analysé(s)${NC}"
+echo -e "${BOLD}${GREEN}📍 ${#POSITION_MAP[@]} position(s) physique(s) unique(s) identifiée(s)${NC}"
 echo ""
-echo -e "${BOLD}${BLUE}Merci d'utiliser MediSense Pro! 🏥${NC}"
+echo -e "${WHITE}🔄 Relancez ce script pour détecter les changements de ports${NC}"
+echo -e "${WHITE}📱 Les changements de ttyUSB0→ttyUSB1 seront maintenant détectés!${NC}"
+echo ""
+echo -e "${BOLD}${BLUE}Analyse complète terminée! 🏥${NC}"
