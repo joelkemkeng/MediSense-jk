@@ -6,9 +6,8 @@ import websockets
 import logging
 import signal
 import sys
-import os
 import glob
-from typing import Optional
+from typing import Optional, Dict, Any
 
 # Configuration du logging pour debug
 logging.basicConfig(
@@ -22,9 +21,68 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Déclaration des variables globales pour stocker les données
-poids: Optional[float] = None
-temperature: Optional[float] = None
-validation: Optional[int] = None
+sensor_data: Dict[str, Any] = {
+    'poids': None,
+    'temperature': None,
+    'temp': None,  # Alias pour temperature
+    'validation': None,
+    'card': None,  # Alias pour validation
+    'taille': None,
+    'size': None,  # Alias pour taille
+}
+
+# Configuration des capteurs avec validation
+SENSOR_CONFIG = {
+    'poids': {
+        'min_value': 0,
+        'max_value': 500,
+        'unit': 'kg',
+        'precision': 1,
+        'aliases': ['weight', 'masse']
+    },
+    'temperature': {
+        'min_value': 0,
+        'max_value': 50,
+        'unit': '°C',
+        'precision': 1,
+        'aliases': ['temp']
+    },
+    'temp': {
+        'min_value': 0,
+        'max_value': 50,
+        'unit': '°C',
+        'precision': 1,
+        'aliases': ['temperature']
+    },
+    'validation': {
+        'expected_value': 310502,
+        'unit': '',
+        'precision': 0,
+        'aliases': ['card', 'valid']
+    },
+    'card': {
+        'expected_value': 310502,
+        'unit': '',
+        'precision': 0,
+        'aliases': ['validation', 'valid']
+    },
+    'taille': {
+        'min_value': 0.5,
+        'max_value': 3.0,
+        'unit': 'm',
+        'precision': 2,
+        'aliases': ['size', 'height']
+    },
+    'size': {
+        'min_value': 0.5,
+        'max_value': 3.0,
+        'unit': 'm',
+        'precision': 2,
+        'aliases': ['taille', 'height']
+    }
+}
+
+# Code de référence pour la validation
 refValidateCard: int = 310502
 
 # Lock pour la synchronisation des threads
@@ -36,352 +94,337 @@ shutdown_event = threading.Event()
 # Liste des clients connectés
 connected_clients = set()
 
-def detect_sensor_ports():
-    """
-    Détecte automatiquement les ports des capteurs en testant les baudrates
-    Retourne un dictionnaire avec les ports détectés
-    """
-    logger.info("🔍 Détection automatique des ports des capteurs...")
-    
-    # Récupérer tous les ports USB disponibles
-    usb_ports = glob.glob('/dev/ttyUSB*') + glob.glob('/dev/ttyACM*')
-    usb_ports.sort()  # Trier pour avoir un ordre cohérent
-    
-    logger.info(f"📡 Ports USB détectés: {usb_ports}")
-    
-    detected_ports = {
-        'temperature': None,
-        'poids': None,
-        'validation': None
-    }
-    
-    for port in usb_ports:
-        logger.info(f"🔧 Test du port {port}...")
-        
-        # Test pour capteur de température (9600 baud)
-        if detected_ports['temperature'] is None:
-            try:
-                ser = serial.Serial(port, 9600, timeout=2)
-                time.sleep(1)
-                
-                # Lire quelques échantillons pour identifier le capteur
-                for _ in range(5):
-                    if ser.in_waiting > 0:
-                        data = ser.readline().decode('utf-8', errors='ignore').strip()
-                        if data:
-                            try:
-                                value = float(data)
-                                # Test si c'est une température (range typique 35-42°C)
-                                if 35.0 <= value <= 42.0:
-                                    detected_ports['temperature'] = port
-                                    logger.info(f"🌡️ Capteur température détecté sur {port} (valeur test: {value}°C)")
-                                    ser.close()
-                                    break
-                            except ValueError:
-                                pass
-                    time.sleep(0.2)
-                else:
-                    ser.close()
-            except Exception as e:
-                logger.debug(f"❌ Erreur test température sur {port}: {e}")
-        
-        # Test pour capteur de poids (57600 baud)
-        if detected_ports['poids'] is None:
-            try:
-                ser = serial.Serial(port, 57600, timeout=2)
-                time.sleep(1)
-                
-                # Lire quelques échantillons pour identifier le capteur
-                for _ in range(5):
-                    if ser.in_waiting > 0:
-                        data = ser.readline().decode('utf-8', errors='ignore').strip()
-                        if data:
-                            try:
-                                value = float(data)
-                                # Test si c'est un poids (range typique 1-200kg)
-                                if 1.0 <= value <= 200.0:
-                                    detected_ports['poids'] = port
-                                    logger.info(f"⚖️ Capteur poids détecté sur {port} (valeur test: {value}kg)")
-                                    ser.close()
-                                    break
-                            except ValueError:
-                                pass
-                    time.sleep(0.2)
-                else:
-                    ser.close()
-            except Exception as e:
-                logger.debug(f"❌ Erreur test poids sur {port}: {e}")
-        
-        # Test pour capteur de validation (9600 baud, codes numériques)
-        if detected_ports['validation'] is None:
-            try:
-                ser = serial.Serial(port, 9600, timeout=2)
-                time.sleep(1)
-                
-                # Lire quelques échantillons pour identifier le capteur
-                for _ in range(5):
-                    if ser.in_waiting > 0:
-                        data = ser.readline().decode('utf-8', errors='ignore').strip()
-                        if data:
-                            try:
-                                value = int(data)
-                                # Test si c'est un code de validation (6 chiffres commençant par 31)
-                                if 300000 <= value <= 999999:
-                                    detected_ports['validation'] = port
-                                    logger.info(f"🔐 Capteur validation détecté sur {port} (valeur test: {value})")
-                                    ser.close()
-                                    break
-                            except ValueError:
-                                pass
-                    time.sleep(0.2)
-                else:
-                    ser.close()
-            except Exception as e:
-                logger.debug(f"❌ Erreur test validation sur {port}: {e}")
-    
-    # Afficher le résumé de détection
-    logger.info("📊 Résumé de la détection automatique:")
-    for sensor, port in detected_ports.items():
-        if port:
-            logger.info(f"   ✅ {sensor.capitalize()}: {port}")
-        else:
-            logger.warning(f"   ❌ {sensor.capitalize()}: Non détecté")
-    
-    return detected_ports
+# Dictionnaire des ports actifs
+active_ports: Dict[str, serial.Serial] = {}
 
-def create_udev_rules(detected_ports):
+def discover_serial_ports():
     """
-    Créer des règles udev pour fixer les ports (optionnel)
+    Découvre automatiquement tous les ports série disponibles
+    Returns: Liste des ports série détectés
+    """
+    logger.info("🔍 Découverte automatique des ports série...")
+    
+    # Types de ports à scanner
+    port_patterns = [
+        '/dev/ttyUSB*',
+        '/dev/ttyACM*', 
+        '/dev/ttyS*',
+        '/dev/ttyAMA*'
+    ]
+    
+    available_ports = []
+    
+    for pattern in port_patterns:
+        ports = glob.glob(pattern)
+        available_ports.extend(sorted(ports))
+    
+    # Filtrer les ports système non utilisables
+    filtered_ports = []
+    for port in available_ports:
+        try:
+            # Test rapide d'ouverture
+            test_ser = serial.Serial(port, 9600, timeout=0.1)
+            test_ser.close()
+            filtered_ports.append(port)
+            logger.info(f"📡 Port détecté: {port}")
+        except (serial.SerialException, PermissionError) as e:
+            logger.debug(f"⚠️ Port {port} non accessible: {e}")
+    
+    logger.info(f"✅ {len(filtered_ports)} port(s) série utilisable(s) trouvé(s)")
+    return filtered_ports
+
+def connect_to_ports(ports_list):
+    """
+    Établit les connexions avec tous les ports disponibles
+    Args: ports_list - Liste des ports à connecter
+    Returns: Dictionnaire des connexions établies
+    """
+    logger.info("🔌 Connexion aux ports série...")
+    
+    connections = {}
+    
+    # Baudrates courants à tester
+    baudrates = [9600, 57600, 115200, 38400, 19200]
+    
+    for port in ports_list:
+        port_name = port.split('/')[-1]  # Extraire le nom du port
+        
+        for baudrate in baudrates:
+            try:
+                ser = serial.Serial(port, baudrate, timeout=1)
+                connections[port_name] = {
+                    'serial': ser,
+                    'port_path': port,
+                    'baudrate': baudrate,
+                    'last_data': None,
+                    'error_count': 0
+                }
+                logger.info(f"✅ {port_name} connecté à {baudrate} baud")
+                break  # Connexion réussie, arrêter les tests de baudrate
+                
+            except serial.SerialException as e:
+                logger.debug(f"❌ Échec connexion {port} @ {baudrate}: {e}")
+                continue
+        
+        if port_name not in connections:
+            logger.warning(f"⚠️ Impossible de connecter {port}")
+    
+    logger.info(f"🎯 {len(connections)} connexion(s) établie(s)")
+    return connections
+
+def parse_sensor_data(raw_data: str, port_name: str) -> tuple:
+    """
+    Parse les données reçues d'un capteur selon le format préfixe:valeur
+    Args: 
+        raw_data - Données brutes reçues
+        port_name - Nom du port source
+    Returns: (sensor_type, value, success)
     """
     try:
-        udev_rules = []
+        # Nettoyer les données
+        data = raw_data.strip()
         
-        for sensor, port in detected_ports.items():
-            if port:
-                # Obtenir les informations du périphérique
-                try:
-                    import subprocess
-                    result = subprocess.run(['udevadm', 'info', '-a', '-n', port], 
-                                          capture_output=True, text=True)
-                    
-                    # Extraire le numéro de série ou ID unique si disponible
-                    lines = result.stdout.split('\n')
-                    serial_num = None
-                    vendor_id = None
-                    product_id = None
-                    
-                    for line in lines:
-                        if 'ATTRS{serial}' in line and serial_num is None:
-                            serial_num = line.split('"')[1]
-                        elif 'ATTRS{idVendor}' in line and vendor_id is None:
-                            vendor_id = line.split('"')[1]
-                        elif 'ATTRS{idProduct}' in line and product_id is None:
-                            product_id = line.split('"')[1]
-                    
-                    if vendor_id and product_id:
-                        rule = f'SUBSYSTEM=="tty", ATTRS{{idVendor}}=="{vendor_id}", ATTRS{{idProduct}}=="{product_id}"'
-                        if serial_num:
-                            rule += f', ATTRS{{serial}}=="{serial_num}"'
-                        rule += f', SYMLINK+="medisense_{sensor}"'
-                        udev_rules.append(rule)
-                        
-                        logger.info(f"📝 Règle udev pour {sensor}: {rule}")
-                
-                except Exception as e:
-                    logger.debug(f"❌ Impossible de créer la règle udev pour {sensor}: {e}")
+        if not data:
+            return None, None, False
         
-        if udev_rules:
-            rules_content = '\n'.join(udev_rules) + '\n'
-            logger.info("💡 Pour fixer définitivement les ports, créez le fichier:")
-            logger.info("   sudo nano /etc/udev/rules.d/99-medisense.rules")
-            logger.info("💡 Avec le contenu suivant:")
-            logger.info(f"   {rules_content}")
-            logger.info("💡 Puis redémarrez avec: sudo reboot")
+        # Vérifier le format préfixe:valeur
+        if ':' not in data:
+            logger.debug(f"📥 {port_name}: Format non reconnu: '{data}'")
+            return None, None, False
+        
+        # Séparer préfixe et valeur
+        parts = data.split(':', 1)  # Split seulement sur le premier ':'
+        if len(parts) != 2:
+            logger.debug(f"📥 {port_name}: Format invalide: '{data}'")
+            return None, None, False
+        
+        sensor_type = parts[0].lower().strip()
+        value_str = parts[1].strip()
+        
+        # Vérifier si le type de capteur est connu
+        if sensor_type not in SENSOR_CONFIG:
+            # Vérifier les aliases
+            found = False
+            for main_type, config in SENSOR_CONFIG.items():
+                if sensor_type in config.get('aliases', []):
+                    sensor_type = main_type
+                    found = True
+                    break
             
+            if not found:
+                logger.debug(f"📥 {port_name}: Type capteur inconnu: '{sensor_type}'")
+                return None, None, False
+        
+        # Convertir la valeur selon le type
+        config = SENSOR_CONFIG[sensor_type]
+        
+        try:
+            if sensor_type in ['validation', 'card']:
+                # Pour la validation, convertir en entier
+                value = int(float(value_str))  # float puis int pour gérer "310502.0"
+            else:
+                # Pour les autres, convertir en float
+                value = float(value_str)
+                # Appliquer la précision
+                value = round(value, config.get('precision', 1))
+        
+        except ValueError as e:
+            logger.warning(f"❌ {port_name}: Impossible de convertir '{value_str}': {e}")
+            return None, None, False
+        
+        logger.debug(f"📊 {port_name}: {sensor_type} = {value}")
+        return sensor_type, value, True
+        
     except Exception as e:
-        logger.error(f"❌ Erreur création règles udev: {e}")
+        logger.error(f"❌ Erreur parsing données de {port_name}: {e}")
+        return None, None, False
+
+def validate_sensor_value(sensor_type: str, value) -> bool:
+    """
+    Valide une valeur de capteur selon sa configuration
+    Args:
+        sensor_type - Type du capteur
+        value - Valeur à valider
+    Returns: True si valide, False sinon
+    """
+    if sensor_type not in SENSOR_CONFIG:
+        return False
+    
+    config = SENSOR_CONFIG[sensor_type]
+    
+    try:
+        if sensor_type in ['validation', 'card']:
+            # Validation spéciale pour les codes
+            expected = config.get('expected_value', refValidateCard)
+            return value == expected
+        else:
+            # Validation par plage pour les autres capteurs
+            min_val = config.get('min_value', float('-inf'))
+            max_val = config.get('max_value', float('inf'))
+            return min_val <= value <= max_val
+    
+    except Exception as e:
+        logger.error(f"❌ Erreur validation {sensor_type}: {e}")
+        return False
+
+def update_sensor_data(sensor_type: str, value, port_name: str):
+    """
+    Met à jour les données globales des capteurs
+    Args:
+        sensor_type - Type du capteur
+        value - Nouvelle valeur
+        port_name - Port source
+    """
+    global sensor_data
+    
+    if not validate_sensor_value(sensor_type, value):
+        logger.warning(f"⚠️ {port_name}: Valeur {sensor_type}={value} hors limites")
+        return False
+    
+    with data_lock:
+        # Mettre à jour la valeur principale
+        sensor_data[sensor_type] = value
+        
+        # Mettre à jour les aliases si nécessaire
+        config = SENSOR_CONFIG.get(sensor_type, {})
+        for alias in config.get('aliases', []):
+            if alias in sensor_data:
+                sensor_data[alias] = value
+        
+        # Log de mise à jour
+        unit = config.get('unit', '')
+        logger.info(f"📊 {sensor_type.capitalize()}: {value}{unit} (depuis {port_name})")
+    
+    return True
 
 def read_serial_data():
-    """Fonction qui lit en continu les données du port série avec détection automatique"""
-    global poids, temperature, validation
+    """Fonction principale qui lit en continu les données de tous les ports série"""
+    logger.info("🚀 Démarrage de la lecture des données série...")
     
-    # Variables pour les connexions série
-    ser_poids = None
-    ser_temperature = None
-    ser_validation = None
+    # Découvrir les ports disponibles
+    available_ports = discover_serial_ports()
     
-    try:
-        # Détection automatique des ports
-        detected_ports = detect_sensor_ports()
-        
-        # Si aucun port détecté automatiquement, essayer la configuration par défaut
-        if not any(detected_ports.values()):
-            logger.warning("⚠️ Aucun capteur détecté automatiquement, essai configuration manuelle...")
-            detected_ports = {
-                'temperature': '/dev/ttyUSB2',
-                'poids': '/dev/ttyUSB1', 
-                'validation': '/dev/ttyACM0'
-            }
-        
-        # Créer les règles udev (informatif)
-        create_udev_rules(detected_ports)
-        
-        ports_connected = 0
-        
-        # Connexion au capteur de température
-        if detected_ports['temperature']:
-            try:
-                ser_temperature = serial.Serial(detected_ports['temperature'], 9600, timeout=1)
-                logger.info(f"✅ Température connectée sur {detected_ports['temperature']}")
-                ports_connected += 1
-            except serial.SerialException as e:
-                logger.warning(f"⚠️ Erreur connexion température sur {detected_ports['temperature']}: {e}")
-        
-        # Connexion au capteur de poids
-        if detected_ports['poids']:
-            try:
-                ser_poids = serial.Serial(detected_ports['poids'], 57600, timeout=1)
-                logger.info(f"✅ Poids connecté sur {detected_ports['poids']}")
-                ports_connected += 1
-            except serial.SerialException as e:
-                logger.warning(f"⚠️ Erreur connexion poids sur {detected_ports['poids']}: {e}")
-        
-        # Connexion au capteur de validation
-        if detected_ports['validation']:
-            try:
-                ser_validation = serial.Serial(detected_ports['validation'], 9600, timeout=1)
-                logger.info(f"✅ Validation connectée sur {detected_ports['validation']}")
-                ports_connected += 1
-            except serial.SerialException as e:
-                logger.warning(f"⚠️ Erreur connexion validation sur {detected_ports['validation']}: {e}")
-        
-        # Mode simulation si aucun port n'est disponible
-        simulate_data = (ports_connected == 0)
-        
-        if simulate_data:
-            logger.warning("⚠️ Aucun capteur connecté! Démarrage en mode SIMULATION...")
-        else:
-            logger.info(f"✅ {ports_connected} capteur(s) connecté(s)")
+    if not available_ports:
+        logger.warning("⚠️ Aucun port série disponible! Démarrage en mode SIMULATION...")
+        run_simulation_mode()
+        return
+    
+    # Établir les connexions
+    connections = connect_to_ports(available_ports)
+    
+    if not connections:
+        logger.warning("⚠️ Aucune connexion établie! Démarrage en mode SIMULATION...")
+        run_simulation_mode()
+        return
+    
+    logger.info(f"✅ Lecture démarrée sur {len(connections)} port(s)")
+    
+    # Boucle principale de lecture
+    while not shutdown_event.is_set():
+        try:
+            data_received = False
             
-        time.sleep(2)  # Pause pour permettre aux ports de s'initialiser
-        logger.info("🚀 Début de la lecture des données...")
-
-        # Compteur pour la simulation
-        counter = 0
-        last_validation_time = 0
-
-        # Boucle infinie pour lire les données en continu
-        while not shutdown_event.is_set():
-            try:
-                current_time = time.time()
+            # Lire chaque port connecté
+            for port_name, conn_info in connections.items():
+                ser = conn_info['serial']
                 
-                # Mode simulation si aucun port n'est disponible
-                if simulate_data:
-                    counter += 1
-                    with data_lock:
-                        # Simulation de données réalistes
-                        poids = round(70.5 + (counter % 20) * 0.1, 1)
-                        temperature = round(36.5 + (counter % 8) * 0.05, 1)
-                        
-                        # Validation toutes les 30 secondes environ
-                        if current_time - last_validation_time > 30:
-                            validation = refValidateCard
-                            last_validation_time = current_time
-                            logger.info(f"✅ [SIMULATION] Validation générée: {validation}")
-                    
-                    if counter % 10 == 0:  # Log toutes les 10 itérations
-                        logger.info(f"📊 [SIMULATION] Poids: {poids}kg, Température: {temperature}°C")
-                    
-                    time.sleep(2)  # 2 secondes en mode simulation
-                    continue
-
-                # Lecture réelle des ports série
-                data_received = False
-                
-                # Lecture de la température
-                if ser_temperature and ser_temperature.is_open:
-                    try:
-                        if ser_temperature.in_waiting > 0:
-                            data1 = ser_temperature.readline().decode('utf-8', errors='ignore').strip()
-                            if data1:
-                                new_temperature = float(data1)
-                                if new_temperature > 35.6:  # Seuil de validation
-                                    with data_lock:
-                                        temperature = round(new_temperature, 2)
-                                    logger.info(f"🌡️ Température reçue: {temperature}°C")
-                                    data_received = True
-                                else:
-                                    logger.debug(f"🌡️ Température trop basse: {new_temperature}°C")
-                    except ValueError as e:
-                        logger.error(f"❌ Erreur conversion température: {e}")
-                    except Exception as e:
-                        logger.error(f"❌ Erreur lecture température: {e}")
-
-                # Lecture du poids
-                if ser_poids and ser_poids.is_open:
-                    try:
-                        if ser_poids.in_waiting > 0:
-                            data = ser_poids.readline().decode('utf-8', errors='ignore').strip()
-                            if data:
-                                new_poids = float(data)
-                                if new_poids > 2:  # Seuil de validation
-                                    with data_lock:
-                                        poids = round(new_poids, 1)
-                                    logger.info(f"⚖️ Poids reçu: {poids} Kg")
-                                    data_received = True
-                                else:
-                                    logger.debug(f"⚖️ Poids trop bas: {new_poids}kg")
-                    except ValueError as e:
-                        logger.error(f"❌ Erreur conversion poids: {e}")
-                    except Exception as e:
-                        logger.error(f"❌ Erreur lecture poids: {e}")
-
-                # Lecture de la validation
-                if ser_validation and ser_validation.is_open:
-                    try:
-                        if ser_validation.in_waiting > 0:
-                            data3 = ser_validation.readline().decode('utf-8', errors='ignore').strip()
-                            if data3:
-                                new_validation = int(data3)
-                                if new_validation == refValidateCard:
-                                    with data_lock:
-                                        validation = new_validation
-                                    logger.info(f"✅ Validation reçue: {validation}")
-                                    data_received = True
-                                else:
-                                    logger.debug(f"🔐 Code incorrect: {new_validation}")
-                    except ValueError as e:
-                        logger.error(f"❌ Erreur conversion validation: {e}")
-                    except Exception as e:
-                        logger.error(f"❌ Erreur lecture validation: {e}")
-                
-                # Pause adaptative
-                time.sleep(0.05 if data_received else 0.2)
-                        
-            except Exception as e:
-                logger.error(f"❌ Erreur lors de la lecture série: {e}")
-                time.sleep(1)
-                
-    except Exception as e:
-        logger.error(f"❌ Erreur critique dans read_serial_data: {e}")
-    finally:
-        # Fermeture propre des connexions série
-        for ser_name, ser in [("poids", ser_poids), ("température", ser_temperature), ("validation", ser_validation)]:
-            if ser and hasattr(ser, 'is_open') and ser.is_open:
                 try:
-                    ser.close()
-                    logger.info(f"🔌 Port {ser_name} fermé")
+                    if not ser.is_open:
+                        continue
+                    
+                    # Lire les données disponibles
+                    if ser.in_waiting > 0:
+                        raw_data = ser.readline().decode('utf-8', errors='ignore').strip()
+                        
+                        if raw_data:
+                            # Parser les données
+                            sensor_type, value, success = parse_sensor_data(raw_data, port_name)
+                            
+                            if success and sensor_type and value is not None:
+                                # Mettre à jour les données
+                                if update_sensor_data(sensor_type, value, port_name):
+                                    data_received = True
+                                    conn_info['last_data'] = time.time()
+                                    conn_info['error_count'] = 0
+                            else:
+                                logger.debug(f"📥 {port_name}: Données ignorées: '{raw_data}'")
+                
+                except serial.SerialException as e:
+                    conn_info['error_count'] += 1
+                    logger.error(f"❌ Erreur lecture {port_name}: {e}")
+                    
+                    # Reconnecter si trop d'erreurs
+                    if conn_info['error_count'] > 5:
+                        logger.warning(f"🔄 Tentative de reconnexion {port_name}...")
+                        try:
+                            ser.close()
+                            time.sleep(1)
+                            new_ser = serial.Serial(conn_info['port_path'], conn_info['baudrate'], timeout=1)
+                            conn_info['serial'] = new_ser
+                            conn_info['error_count'] = 0
+                            logger.info(f"✅ {port_name} reconnecté")
+                        except Exception as reconnect_error:
+                            logger.error(f"❌ Échec reconnexion {port_name}: {reconnect_error}")
+                
                 except Exception as e:
-                    logger.error(f"❌ Erreur fermeture port {ser_name}: {e}")
-        logger.info("🔌 Toutes les connexions série fermées")
+                    logger.error(f"❌ Erreur inattendue {port_name}: {e}")
+            
+            # Pause adaptative
+            time.sleep(0.05 if data_received else 0.2)
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur critique dans la boucle de lecture: {e}")
+            time.sleep(1)
+    
+    # Fermeture propre des connexions
+    logger.info("🔌 Fermeture des connexions série...")
+    for port_name, conn_info in connections.items():
+        try:
+            if conn_info['serial'].is_open:
+                conn_info['serial'].close()
+                logger.info(f"🔌 {port_name} fermé")
+        except Exception as e:
+            logger.error(f"❌ Erreur fermeture {port_name}: {e}")
 
-# [Le reste du code WebSocket reste identique...]
+def run_simulation_mode():
+    """Mode simulation avec données fictives"""
+    logger.info("🎭 Mode SIMULATION activé")
+    
+    counter = 0
+    last_validation_time = 0
+    
+    while not shutdown_event.is_set():
+        try:
+            current_time = time.time()
+            counter += 1
+            
+            with data_lock:
+                # Simulation de données réalistes
+                sensor_data['poids'] = round(70.5 + (counter % 20) * 0.1, 1)
+                sensor_data['temperature'] = round(36.5 + (counter % 8) * 0.05, 1) 
+                sensor_data['temp'] = sensor_data['temperature']  # Alias
+                
+                # Validation toutes les 30 secondes
+                if current_time - last_validation_time > 30:
+                    sensor_data['validation'] = refValidateCard
+                    sensor_data['card'] = refValidateCard  # Alias
+                    last_validation_time = current_time
+                    logger.info(f"✅ [SIMULATION] Validation générée: {refValidateCard}")
+            
+            # Log périodique
+            if counter % 10 == 0:
+                with data_lock:
+                    logger.info(f"📊 [SIMULATION] Poids: {sensor_data['poids']}kg, "
+                              f"Température: {sensor_data['temperature']}°C")
+            
+            time.sleep(2)
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur en mode simulation: {e}")
+            time.sleep(1)
 
-# Fonction pour gérer les connexions WebSocket
 async def socket_server(websocket):
     """Fonction pour gérer les connexions WebSocket"""
-    global poids, temperature, validation
-    
     client_address = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
     logger.info(f"🌐 Nouvelle connexion WebSocket de {client_address}")
     
@@ -392,38 +435,42 @@ async def socket_server(websocket):
         logger.info(f"✅ Message de bienvenue envoyé à {client_address}")
 
         async for message in websocket:
-            logger.info(f"📨 Message de {client_address}: {message}")
+            logger.debug(f"📨 Message de {client_address}: {message}")
             
             try:
                 response = ""
                 
+                # Gestion des commandes
                 if message == "get-poid":
                     with data_lock:
-                        if poids is not None and poids > 0:
-                            response = f"Poids:{poids}"
-                        else:
-                            response = "Poids:0"
+                        value = sensor_data.get('poids')
+                        response = f"Poids:{value}" if value is not None and value > 0 else "Poids:0"
 
                 elif message == "get-temperature":
                     with data_lock:
-                        if temperature is not None and temperature > 0:
-                            response = f"Température:{temperature}"
-                        else:
-                            response = "Température:0"
+                        value = sensor_data.get('temperature') or sensor_data.get('temp')
+                        response = f"Température:{value}" if value is not None and value > 0 else "Température:0"
 
                 elif message == "get-validation":
                     with data_lock:
-                        if validation is not None and validation == refValidateCard:
-                            response = f"Validation:{validation}"
-                            validation = None
+                        value = sensor_data.get('validation') or sensor_data.get('card')
+                        if value == refValidateCard:
+                            response = f"Validation:{value}"
+                            # Réinitialiser après envoi
+                            sensor_data['validation'] = None
+                            sensor_data['card'] = None
                         else:
                             response = "Validation:0"
 
+                elif message == "get-taille":
+                    with data_lock:
+                        value = sensor_data.get('taille') or sensor_data.get('size')
+                        response = f"Taille:{value}" if value is not None and value > 0 else "Taille:0"
+
                 elif message == "reset-data":
                     with data_lock:
-                        poids = None
-                        temperature = None
-                        validation = None
+                        for key in sensor_data:
+                            sensor_data[key] = None
                     response = "Reset:OK"
                     logger.info(f"🔄 Données réinitialisées par {client_address}")
 
@@ -431,19 +478,25 @@ async def socket_server(websocket):
                     mesures = []
                     
                     with data_lock:
-                        if poids is not None and poids > 0:
-                            mesures.append(f"poids:{poids}")
-                        else:
-                            mesures.append("poids:0")
+                        # Poids
+                        poids_val = sensor_data.get('poids')
+                        mesures.append(f"poids:{poids_val}" if poids_val is not None and poids_val > 0 else "poids:0")
                         
-                        if temperature is not None and temperature > 0:
-                            mesures.append(f"temperature:{temperature}")
-                        else:
-                            mesures.append("temperature:0")
+                        # Température
+                        temp_val = sensor_data.get('temperature') or sensor_data.get('temp')
+                        mesures.append(f"temperature:{temp_val}" if temp_val is not None and temp_val > 0 else "temperature:0")
                         
-                        if validation is not None and validation == refValidateCard:
-                            mesures.append(f"validation:{validation}")
-                            validation = None
+                        # Taille
+                        taille_val = sensor_data.get('taille') or sensor_data.get('size')
+                        mesures.append(f"taille:{taille_val}" if taille_val is not None and taille_val > 0 else "taille:0")
+                        
+                        # Validation
+                        valid_val = sensor_data.get('validation') or sensor_data.get('card')
+                        if valid_val == refValidateCard:
+                            mesures.append(f"validation:{valid_val}")
+                            # Réinitialiser après envoi
+                            sensor_data['validation'] = None
+                            sensor_data['card'] = None
                         else:
                             mesures.append("validation:0")
                     
@@ -451,17 +504,17 @@ async def socket_server(websocket):
 
                 elif message == "ping":
                     response = "pong"
-                
+
                 elif message == "status":
                     with data_lock:
-                        response = f"Status:clients={len(connected_clients)},poids={poids},temp={temperature},valid={validation}"
-                
-                elif message == "detect-ports":
-                    # Nouvelle commande pour re-détecter les ports
-                    ports = detect_sensor_ports()
-                    ports_str = ",".join([f"{k}:{v}" for k, v in ports.items() if v])
-                    response = f"Ports:{ports_str}"
-                
+                        response = f"Status:clients={len(connected_clients)},sensors={len([k for k, v in sensor_data.items() if v is not None])}"
+
+                elif message == "get-sensors":
+                    # Nouvelle commande pour lister tous les capteurs détectés
+                    with data_lock:
+                        active_sensors = [k for k, v in sensor_data.items() if v is not None]
+                        response = f"Sensors:{','.join(active_sensors)}"
+
                 else:
                     response = f"Commande inconnue: {message}"
                     logger.warning(f"⚠️ Commande inconnue de {client_address}: {message}")
@@ -487,7 +540,6 @@ async def socket_server(websocket):
         connected_clients.discard(websocket)
         logger.info(f"🔚 Fin de session avec {client_address} (Clients restants: {len(connected_clients)})")
 
-# Fonction de démarrage du serveur WebSocket
 async def start_websocket_server():
     """Démarrage du serveur WebSocket"""
     logger.info("🚀 Démarrage du serveur WebSocket sur 127.0.0.1:8765")
@@ -502,7 +554,6 @@ async def start_websocket_server():
         ):
             logger.info("✅ Serveur WebSocket démarré avec succès")
             logger.info(f"📡 En écoute sur ws://127.0.0.1:8765")
-            
             await asyncio.Future()  # Run forever
         
     except Exception as e:
@@ -515,7 +566,6 @@ def run_websocket_server():
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         loop.run_until_complete(start_websocket_server())
-        
     except Exception as e:
         logger.error(f"❌ Erreur dans run_websocket_server: {e}")
     finally:
@@ -524,7 +574,7 @@ def run_websocket_server():
         except:
             pass
 
-def signal_handler(signum, frame):
+def signal_handler(signum):
     """Gestionnaire de signal pour arrêt propre"""
     logger.info(f"🛑 Signal {signum} reçu, arrêt du programme...")
     shutdown_event.set()
@@ -540,7 +590,7 @@ def signal_handler(signum, frame):
 def main():
     """Point d'entrée principal"""
     logger.info("=" * 60)
-    logger.info("🏥 ===== DÉMARRAGE DE MEDISENSE PRO v2.2 =====")
+    logger.info("🏥 ===== DÉMARRAGE DE MEDISENSE PRO v3.0 =====")
     logger.info("=" * 60)
     
     signal.signal(signal.SIGINT, signal_handler)
@@ -568,7 +618,8 @@ def main():
         logger.info("✅ Thread WebSocket démarré")
 
         logger.info("🎯 Tous les services sont actifs!")
-        logger.info("🔍 Détection automatique des ports USB activée")
+        logger.info("🔍 Détection automatique des capteurs par préfixe activée")
+        logger.info("📊 Format attendu: 'type:valeur' (ex: temp:36.5, poids:70.2)")
         logger.info("🌐 WebSocket accessible sur ws://127.0.0.1:8765")
         logger.info("⏹️  Appuyez sur Ctrl+C pour arrêter")
         logger.info("-" * 60)
@@ -601,10 +652,10 @@ def main():
             # Log de status toutes les minutes
             if heartbeat_counter % 6 == 0:
                 with data_lock:
-                    logger.info(
-                        f"💓 Status: Clients={len(connected_clients)}, "
-                        f"Poids={poids}, Temp={temperature}, Valid={validation}"
-                    )
+                    active_sensors = [k for k, v in sensor_data.items() if v is not None]
+                    logger.info(f"💓 Status: Clients={len(connected_clients)}, "
+                              f"Capteurs actifs={len(active_sensors)}, "
+                              f"Données: {dict((k, v) for k, v in sensor_data.items() if v is not None)}")
             
     except KeyboardInterrupt:
         logger.info("⏹️ Arrêt demandé par l'utilisateur (Ctrl+C)")
